@@ -17,36 +17,46 @@ class CancelItemDataEventAction {}
 
 class AddItemAction {
   final Item item;
-  final VoidCallback onValue;
+  final VoidCallback onComplete;
   final FutureOr<dynamic> Function(dynamic error) onError;
 
   AddItemAction({
     this.item,
-    this.onValue,
+    this.onComplete,
     this.onError,
   });
 }
 
 class EditItemAction {
   final Item item;
-  final VoidCallback onValue;
+  final VoidCallback onComplete;
   final FutureOr<dynamic> Function(dynamic error) onError;
 
   EditItemAction({
     this.item,
-    this.onValue,
+    this.onComplete,
     this.onError,
   });
 }
 
 class RemoveItemAction {
   final Item item;
-  final VoidCallback onValue;
+  final VoidCallback onComplete;
   final FutureOr<dynamic> Function(dynamic error) onError;
 
   RemoveItemAction({
     this.item,
-    this.onValue,
+    this.onComplete,
+    this.onError,
+  });
+}
+
+class RemoveAllItemAction {
+  final VoidCallback onComplete;
+  final FutureOr<dynamic> Function(dynamic error) onError;
+
+  RemoveAllItemAction({
+    this.onComplete,
     this.onError,
   });
 }

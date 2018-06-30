@@ -13,7 +13,7 @@ List<Middleware<AppState>> createMiddleWares() {
   return [
     new EpicMiddleware(_epic),
     new TypedMiddleware((Store<AppState> store, action, NextDispatcher next) {
-      debugPrint(action.runtimeType.toString());
+      debugPrint('Logging action: ${action.runtimeType}');
       next(action);
     }),
   ];
@@ -25,6 +25,7 @@ final Epic<AppState> _epic = combineEpics(
     _addItemEpic,
     _editItemEpic,
     _removeItemEpic,
+    _removeAllItemEpic,
   ],
 );
 
@@ -75,12 +76,14 @@ Stream<dynamic> _addItemEpic(
   return new Observable(actions)
       .ofType(TypeToken<AddItemAction>())
       .flatMap((addItemAction) {
-    final add = Firestore.instance
-        .collection('items')
-        .add(addItemAction.item.toJson())
-        .then((_) => addItemAction.onValue())
+    final itemsCollection = Firestore.instance.collection('items');
+    final item = addItemAction.item;
+    final task = (item.id != null
+            ? itemsCollection.add(item.toJson())
+            : itemsCollection.document(item.id).setData(item.toJson()))
+        .then((_) => addItemAction.onComplete())
         .catchError(addItemAction.onError);
-    return new Observable.fromFuture(add);
+    return new Stream.fromFuture(task);
   });
 }
 
@@ -89,13 +92,13 @@ Stream<dynamic> _editItemEpic(
   return new Observable(actions)
       .ofType(TypeToken<EditItemAction>())
       .flatMap((editItemAction) {
-    final add = Firestore.instance
+    final edit = Firestore.instance
         .collection('items')
         .document(editItemAction.item.id)
         .setData(editItemAction.item.toJson())
-        .then((_) => editItemAction.onValue())
+        .then((_) => editItemAction.onComplete())
         .catchError(editItemAction.onError);
-    return new Observable.fromFuture(add);
+    return new Stream.fromFuture(edit);
   });
 }
 
@@ -104,12 +107,33 @@ Stream<dynamic> _removeItemEpic(
   return new Observable(actions)
       .ofType(TypeToken<RemoveItemAction>())
       .flatMap((removeItemAction) {
-    final add = Firestore.instance
+    final remove = Firestore.instance
         .collection('items')
         .document(removeItemAction.item.id)
         .delete()
-        .then((_) => removeItemAction.onValue())
+        .then((_) => removeItemAction.onComplete())
         .catchError(removeItemAction.onError);
-    return new Observable.fromFuture(add);
+    return new Stream.fromFuture(remove);
+  });
+}
+
+Stream<dynamic> _removeAllItemEpic(
+    Stream<dynamic> actions, EpicStore<AppState> store) {
+  return new Observable(actions)
+      .ofType(TypeToken<RemoveAllItemAction>())
+      .flatMap((removeAllItemAction) {
+    final batch = Firestore.instance.batch();
+    final removeAll = Firestore.instance
+        .collection('items')
+        .getDocuments()
+        .then((querySnapsht) {
+          querySnapsht.documents.forEach((documentSnapshot) {
+            batch.delete(documentSnapshot.reference);
+          });
+        })
+        .then((_) => batch.commit())
+        .then((_) => removeAllItemAction.onComplete())
+        .catchError(removeAllItemAction.onError);
+    return new Stream.fromFuture(removeAll);
   });
 }

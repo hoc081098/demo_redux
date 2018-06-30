@@ -1,5 +1,5 @@
 import 'package:demo_redux/app_state.dart';
-import 'package:demo_redux/date_time_picker.dart';
+import 'package:demo_redux/edit_add_item_dialog.dart';
 import 'package:demo_redux/item.dart';
 import 'package:demo_redux/middleware.dart';
 import 'package:demo_redux/reducer.dart';
@@ -23,9 +23,7 @@ class MyApp extends StatelessWidget {
     return new StoreProvider(
       child: new MaterialApp(
         title: 'Flutter Demo',
-        theme: new ThemeData(
-          primarySwatch: Colors.blue,
-        ),
+        theme: new ThemeData.dark(),
         home: new MyHomePage(),
       ),
       store: store,
@@ -40,6 +38,7 @@ class HomePageViewModel {
   final void Function(Item) editCallback;
   final void Function(Item) removeCallback;
   final ValueChanged<OrderBy> orderByCallback;
+  final VoidCallback removeAllCallback;
 
   HomePageViewModel({
     @required this.items,
@@ -47,6 +46,7 @@ class HomePageViewModel {
     @required this.editCallback,
     @required this.removeCallback,
     @required this.orderByCallback,
+    @required this.removeAllCallback,
   });
 }
 
@@ -77,9 +77,16 @@ class MyHomePage extends StatelessWidget {
             title: new Text('Demo redux flutter'),
             actions: <Widget>[
               IconButton(
+                tooltip: 'Sort order',
                 icon: Icon(Icons.sort),
                 onPressed: () =>
                     _showSortOrderDialog(viewModel.orderByCallback, context),
+              ),
+              IconButton(
+                tooltip: 'Remove all',
+                icon: Icon(Icons.delete_forever),
+                onPressed: () =>
+                    _showRemoveAllDialog(viewModel.removeAllCallback, context),
               ),
             ],
           ),
@@ -115,7 +122,7 @@ class MyHomePage extends StatelessWidget {
                   ),
                   subtitle: Text(
                     _dateFormat.format(item.time),
-                    textScaleFactor: 0.8,
+                    textScaleFactor: 0.7,
                   ),
                 ),
                 children: <Widget>[
@@ -130,7 +137,11 @@ class MyHomePage extends StatelessWidget {
           ),
           floatingActionButton: FloatingActionButton(
             onPressed: () => _showAddDialog(viewModel.addCallback, context),
-            child: Icon(Icons.add),
+            child: Icon(
+              Icons.add,
+            ),
+            tooltip: 'Add new item',
+            elevation: 12.0,
           ),
         );
       },
@@ -141,7 +152,7 @@ class MyHomePage extends StatelessWidget {
             store.dispatch(
               AddItemAction(
                 item: item,
-                onValue: () => _showMessage('Item added successfully'),
+                onComplete: () => _showMessage('Item added successfully'),
                 onError: (e) => _showMessage('Item added error: $e'),
               ),
             );
@@ -150,7 +161,7 @@ class MyHomePage extends StatelessWidget {
             store.dispatch(
               EditItemAction(
                 item: item,
-                onValue: () => _showMessage('Item edited successfully'),
+                onComplete: () => _showMessage('Item edited successfully'),
                 onError: (e) => _showMessage('Item edited error: $e'),
               ),
             );
@@ -158,12 +169,34 @@ class MyHomePage extends StatelessWidget {
           removeCallback: (item) {
             store.dispatch(RemoveItemAction(
               item: item,
-              onValue: () => _showMessage('Item removed successfully'),
+              onComplete: () {
+                _scaffoldKey.currentState?.showSnackBar(SnackBar(
+                  content: Text('Item removed successfully'),
+                  action: new SnackBarAction(
+                    label: 'Undo',
+                    onPressed: () {
+                      store.dispatch(
+                        AddItemAction(
+                          item: item,
+                          onComplete: () => _showMessage('Undo successfully'),
+                          onError: (e) => _showMessage('Undo error: $e'),
+                        ),
+                      );
+                    },
+                  ),
+                ));
+              },
               onError: (e) => _showMessage('Item removed error: $e'),
             ));
           },
           orderByCallback: (OrderBy value) =>
               store.dispatch(ChangeOrderBy(value)),
+          removeAllCallback: () => store.dispatch(
+                RemoveAllItemAction(
+                  onError: (e) => _showMessage('Remove all error: $e'),
+                  onComplete: () => _showMessage('Remove all successfully'),
+                ),
+              ),
         );
       },
     );
@@ -228,100 +261,36 @@ class MyHomePage extends StatelessWidget {
         });
     orderByCallback(orderBy);
   }
-}
 
-class ItemDialog extends StatefulWidget {
-  final Item item;
-  final String title;
-
-  const ItemDialog({Key key, this.item, this.title}) : super(key: key);
-
-  @override
-  _ItemDialogState createState() => new _ItemDialogState();
-}
-
-class _ItemDialogState extends State<ItemDialog> {
-  TextEditingController _titleController;
-  TextEditingController _contentController;
-
-  DateTime _time;
-
-  @override
-  void initState() {
-    _titleController =
-        new TextEditingController(text: widget.item?.title ?? '');
-    _contentController =
-        new TextEditingController(text: widget.item?.content ?? '');
-    _time = widget.item?.time ?? DateTime.now();
-    debugPrint(widget.item.toString());
-    super.initState();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return new AlertDialog(
-      title: Text(widget.title),
-      content: new SingleChildScrollView(
-        child: new ListBody(
-          children: <Widget>[
-            new TextField(
-              controller: _titleController,
-              maxLines: 1,
-              decoration: InputDecoration(
-                labelText: 'Title',
-                prefixIcon: Icon(Icons.title),
-              ),
-            ),
-            new TextField(
-              controller: _contentController,
-              maxLines: 4,
-              decoration: InputDecoration(
-                labelText: 'Content',
-                prefixIcon: Icon(Icons.text_fields),
-              ),
-            ),
-            new DateTimePicker(
-              labelText: 'Select time',
-              selectedDate: _time,
-              selectedTime: new TimeOfDay.fromDateTime(_time),
-              selectDate: (selectedDate) {
-                _time = selectedDate;
-                setState(() {});
+  _showRemoveAllDialog(
+      VoidCallback removeAllCallback, BuildContext context) async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return new AlertDialog(
+          title: new Text('Remove all items'),
+          content: Text(
+            "This action can't be undone",
+            textScaleFactor: 0.8,
+            style: TextStyle(color: Colors.redAccent),
+          ),
+          actions: <Widget>[
+            new FlatButton(
+              child: new Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop(false);
               },
-              selectTime: (selectedTime) {
-                _time = new DateTime(
-                  _time.year,
-                  _time.month,
-                  _time.day,
-                  selectedTime.hour,
-                  selectedTime.minute,
-                );
-                setState(() {});
+            ),
+            new FlatButton(
+              child: new Text('Yes'),
+              onPressed: () {
+                Navigator.of(context).pop(true);
               },
-            )
+            ),
           ],
-        ),
-      ),
-      actions: <Widget>[
-        new FlatButton(
-          child: new Text('Cancel'),
-          onPressed: () {
-            Navigator.of(context).pop(null);
-          },
-        ),
-        new FlatButton(
-          child: new Text('Yes'),
-          onPressed: () {
-            final item = new Item(
-              title: _titleController.text,
-              content: _contentController.text,
-              time: _time,
-              id: widget.item?.id,
-            );
-            Navigator.of(context).pop(item);
-          },
-        ),
-      ],
+        );
+      },
     );
+    if (res) removeAllCallback();
   }
 }
